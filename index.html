@@ -183,15 +183,28 @@
   #lock .sub { font-size: 14.5px; font-weight: 500; color: rgba(236,230,215,.62); margin-top: 16px; line-height: 1.5; max-width: 230px; }
   #lock .unlockl { font-size: 11px; font-weight: 700; letter-spacing: .18em; color: rgba(236,230,215,.5); text-transform: uppercase; margin-top: 40px; }
   #lock .unlockt { font-size: 60px; font-weight: 800; letter-spacing: -2px; color: var(--dark-cream); margin-top: 8px; }
-  .holdbtn {
-    position: relative; width: 100%; margin-bottom: calc(26px + env(safe-area-inset-bottom));
-    padding: 17px; border-radius: 20px; border: 1.5px solid rgba(236,230,215,.22);
-    background: rgba(236,230,215,.04); color: rgba(236,230,215,.78);
-    font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer; overflow: hidden;
-    user-select: none; -webkit-user-select: none;
+  .lockfoot {
+    margin-bottom: calc(34px + env(safe-area-inset-bottom));
+    font-size: 13.5px; font-weight: 600; color: rgba(236,230,215,.5);
+    text-align: center; max-width: 260px; line-height: 1.5;
   }
-  .holdbtn .fill { position: absolute; inset: 0; background: rgba(236,230,215,.16); width: 0%; transition: width .05s linear; }
-  .holdbtn span { position: relative; z-index: 1; }
+
+  /* onboarding: background-permission ask */
+  #onboard {
+    position: absolute; inset: 0; z-index: 70; display: none;
+    flex-direction: column; align-items: center; text-align: center;
+    background: var(--cream); padding: 0 30px;
+  }
+  #onboard.show { display: flex; }
+  .ob-mid { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .ob-duck { width: 96px; height: 96px; margin-bottom: 26px; }
+  #onboard h2 { font-size: 30px; font-weight: 800; letter-spacing: -1px; color: var(--ink); line-height: 1.06; }
+  #onboard p { font-size: 15px; font-weight: 500; color: rgba(28,26,22,.6); line-height: 1.6; margin-top: 16px; max-width: 300px; }
+  .ob-actions { width: 100%; display: flex; flex-direction: column; gap: 10px; margin-bottom: calc(26px + env(safe-area-inset-bottom)); }
+  .ob-btn { width: 100%; padding: 17px; border: 0; border-radius: 20px; font-family: inherit; font-size: 16px; font-weight: 700; cursor: pointer; transition: transform .12s ease; }
+  .ob-btn:active { transform: scale(.98); }
+  .ob-btn.primary { background: var(--ink); color: var(--cream); }
+  .ob-btn.ghost { background: transparent; color: var(--muted); }
 
   /* toast */
   .toast {
@@ -293,7 +306,20 @@
       <div class="unlockl">Unlocks at</div>
       <div class="unlockt" id="lockUnlock">7:15</div>
     </div>
-    <button class="holdbtn" id="holdBtn"><span class="fill" id="holdFill"></span><span id="holdLabel">Hold to unlock early &#8594;</span></button>
+    <div class="lockfoot" id="lockFoot">Your phone unlocks automatically — get some rest</div>
+  </div>
+
+  <!-- ONBOARDING: ask to run in the background -->
+  <div id="onboard">
+    <div class="ob-mid">
+      <div class="duck ob-duck"></div>
+      <h2>Run in the<br>background?</h2>
+      <p>Good Night needs to keep running so it can lock your screen at bedtime — and show it again if you try to leave — until your wake time.</p>
+    </div>
+    <div class="ob-actions">
+      <button class="ob-btn primary" id="obAllow">Allow in background</button>
+      <button class="ob-btn ghost" id="obLater">Maybe later</button>
+    </div>
   </div>
 
   <div class="dots" id="dots"><i class="on"></i><i></i></div>
@@ -358,6 +384,7 @@
   var DEFAULTS = {
     smartWake: true,
     autolock: true,
+    onboarded: false,
     schedule: {
       mon: { on:true,  bed:"23:30", wake:"07:15" },
       tue: { on:true,  bed:"23:30", wake:"07:15" },
@@ -548,38 +575,30 @@
     renderTonight();
   });
 
-  var snoozeUntil = 0;                 // when an early-unlock grace expires and Good Night resumes
-  var SNOOZE_MS = 5 * 60 * 1000;       // 5-minute grace
+  var snoozeUntil = 0;                 // kept at 0 — there is no early unlock anymore
   var previewMode = false;             // true = user is previewing the lock outside the real window
   function showLock() {
     $("lockUnlock").textContent = parts12(today().wake).hm;
+    $("lockFoot").textContent = previewMode
+      ? "Preview · tap anywhere to close"
+      : "Your phone unlocks automatically — get some rest";
     $("lock").classList.add("show");
   }
   function hideLock() { $("lock").classList.remove("show"); }
 
-  // hold to unlock
-  (function () {
-    var btn = $("holdBtn"), fill = $("holdFill"), label = $("holdLabel");
-    var raf = null, start = 0, HOLD = 1100;
-    function frame(ts) {
-      if (!start) start = ts;
-      var p = Math.min(1, (ts - start) / HOLD);
-      fill.style.width = (p * 100) + "%";
-      if (p >= 1) { done(); return; }
-      raf = requestAnimationFrame(frame);
-    }
-    function begin(e) { e.preventDefault(); start = 0; label.textContent = "Keep holding…"; raf = requestAnimationFrame(frame); }
-    function cancel() { if (raf) cancelAnimationFrame(raf); raf = null; fill.style.width = "0%"; label.innerHTML = "Hold to unlock early &#8594;"; }
-    function done() {
-      cancelAnimationFrame(raf); raf = null; fill.style.width = "0%"; label.innerHTML = "Hold to unlock early &#8594;";
-      hideLock();
-      if (previewMode) { previewMode = false; }                       // just a preview — dismiss
-      else if (inWindow()) { snoozeUntil = Date.now() + SNOOZE_MS; toast("5 minutes, then Good Night resumes 🌙"); }
-    }
-    btn.addEventListener("mousedown", begin);
-    btn.addEventListener("touchstart", begin, { passive: false });
-    ["mouseup","mouseleave","touchend","touchcancel"].forEach(function (ev) { btn.addEventListener(ev, cancel); });
-  })();
+  // The real lock has NO exit — it only releases at wake time.
+  // A *preview* (triggered outside the sleep window) closes on tap.
+  $("lock").addEventListener("click", function () {
+    if (previewMode) { previewMode = false; hideLock(); }
+  });
+
+  // If the user leaves the app and comes back during the sleep window, re-show the lock.
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden && S.autolock && inWindow() && !previewMode) showLock();
+  });
+  window.addEventListener("focus", function () {
+    if (S.autolock && inWindow() && !previewMode) showLock();
+  });
 
   /* ---------- add weekend ---------- */
   $("addWeekend").addEventListener("click", function () {
@@ -630,10 +649,24 @@
     renderTonight();
   }
 
+  /* ---------- onboarding: ask to run in the background ---------- */
+  function finishOnboarding(allowed) {
+    S.onboarded = true;
+    S.autolock = allowed ? true : S.autolock;   // "Allow" guarantees auto-lock is armed
+    save();
+    $("onboard").classList.remove("show");
+    renderTonight();
+    toast(allowed ? "Background access on — Good Night is armed 🌙" : "You can enable this later in the schedule");
+    loop();
+  }
+  $("obAllow").addEventListener("click", function () { finishOnboarding(true); });
+  $("obLater").addEventListener("click", function () { finishOnboarding(false); });
+
   /* ---------- init ---------- */
   renderTonight(); renderSchedule(); renderPick();
   showMain(0);
   clock();
+  if (!S.onboarded) $("onboard").classList.add("show");   // first launch → ask for background permission
   setInterval(loop, 1000);
   loop();   // if we're already inside the sleep window (e.g. after a reload), lock immediately
 })();

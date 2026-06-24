@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Claude_Preview__preview_start",
+      "Bash(cp \"/c/Users/noamc/Downloads/עיצוב ללא שם.png\" \"/c/Users/noamc/Good Night/assets/logo.png\" && ls -la \"/c/Users/noamc/Good Night/assets/\" && file \"/c/Users/noamc/Good Night/assets/logo.png\" 2>/dev/null)"
+    ]
+  }
+}
